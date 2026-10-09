@@ -4,46 +4,87 @@
 
 ## Project Overview
 
-This project demonstrates basic analysis and quality assessment
-of Next-Generation Sequencing (NGS) reads using Python.
+This project is a beginner-friendly Python tool for analysing illustrative Next-Generation Sequencing (NGS) reads and assessing basic sequencing quality.
 
-It is designed as a beginner-friendly bioinformatics project
-using illustrative sequencing data.
+It demonstrates fundamental bioinformatics concepts using sample FASTQ data.
 
 ## Objectives
 
-- Examine sequencing reads.
+- Analyse individual sequencing reads.
+- Analyse multiple sequencing reads.
 - Calculate read lengths and nucleotide counts.
 - Calculate GC content.
-- Summarize sequencing quality scores.
-- Identify reads that may require quality review.
-- Generate a summary of the analysis.
+- Convert FASTQ quality characters into Phred quality scores.
+- Calculate average sequencing quality.
+- Identify invalid DNA characters.
+- Apply illustrative quality-control checks.
+- Generate an overall quality-control summary.
 
-## Tools and Technologies
+## Features
+
+### 1. Single-Read Analysis
+
+Users can enter a DNA sequencing read and optionally provide its FASTQ quality string.
+
+### 2. Multiple-Read Analysis
+
+The program analyses four built-in example FASTQ reads and generates a report for each read.
+
+### 3. Sequence Statistics
+
+For each read, the program reports:
+
+- Read length
+- A, T, G, C and N nucleotide counts
+- GC content
+- Average Phred quality score, when available
+
+### 4. Quality Control
+
+The program checks read length, GC content and average quality against illustrative thresholds.
+
+It also identifies invalid characters and reports reads that require review.
+
+### 5. Overall Summary
+
+For multiple reads, the program reports:
+
+- Total number of reads
+- Valid and invalid reads
+- Reads passing quality control
+- Reads requiring review
+- Average read length
+- Average GC content
+- Average Phred quality score
+
+## Technologies Used
 
 - Python
-- FASTQ file format
-- Basic bioinformatics concepts
-- Sequencing quality control
+- FASTQ format
+- Basic sequencing quality-control concepts
 
-## Planned Analysis
+## How to Run
 
-The project will include read quality assessment, nucleotide
-composition analysis, GC content calculation, and a summary
-of quality control results.
+1. Open `ngs_analysis.py` in a Python 3 environment.
+2. Run the program.
+3. Choose option 1 to analyse a single read.
+4. Choose option 2 to analyse the built-in FASTQ examples.
+5. Choose option 3 to exit.
 
-## Data
+## Data and Limitations
 
-The initial dataset will contain small illustrative sequencing
-reads for demonstration and testing purposes.
+The multiple-read analysis uses illustrative FASTQ records built into the program. It does not currently load external FASTQ files.
 
-It does not represent a real biological experiment.
+The quality-control thresholds are educational examples, not universal laboratory standards.
 
-## Limitations
+This project demonstrates basic quality-control concepts. It does not replace professional sequencing analysis tools such as FastQC.
 
-This is an educational project. Its simplified quality
-assessment does not replace established tools such as FastQC
-or a complete NGS analysis pipeline.
+## Future Improvements
+
+- Support loading external FASTQ files.
+- Generate visualisations of sequencing quality.
+- Add more comprehensive quality-control statistics.
+- Compare results across larger sequencing datasets.
 
 ## Author
 
