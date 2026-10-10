@@ -2,15 +2,15 @@
 NGS Data Analysis
 Author: Ochai Moses Ameh
 
-A beginner-friendly tool for analysing illustrative
-Next-Generation Sequencing (NGS) reads and their quality.
+A beginner-friendly tool for analysing NGS reads
+and their sequencing quality.
 """
 
 from statistics import mean
 
 AUTHOR = "Ochai Moses Ameh"
 
-# Illustrative QC thresholds for this learning project.
+# Illustrative thresholds for this learning project.
 MIN_READ_LENGTH = 5
 MIN_AVERAGE_QUALITY = 20
 MIN_GC_CONTENT = 30
@@ -18,7 +18,7 @@ MAX_GC_CONTENT = 70
 
 
 def clean_sequence(sequence):
-    """Convert a DNA sequence to uppercase and remove whitespace."""
+    """Convert a DNA sequence to uppercase."""
     return "".join(sequence.split()).upper()
 
 
@@ -32,7 +32,7 @@ def calculate_gc_content(sequence):
 
 
 def count_bases(sequence):
-    """Count the occurrences of A, T, G, C and N."""
+    """Count A, T, G, C and N bases."""
     return {
         "A": sequence.count("A"),
         "T": sequence.count("T"),
@@ -43,93 +43,122 @@ def count_bases(sequence):
 
 
 def validate_sequence(sequence):
-    """Return characters that are not accepted DNA bases."""
+    """Find characters that are not accepted DNA bases."""
     valid_bases = set("ATGCN")
     return sorted(set(sequence) - valid_bases)
 
 
 def phred_score_to_quality(character):
-    """
-    Convert a FASTQ quality character to a Phred score.
-    This project uses the standard Phred+33 encoding.
-    """
+    """Convert a FASTQ Phred+33 character to a quality score."""
     return ord(character) - 33
 
 
-def analyze_read(read_id, sequence, quality_string=None):
-    """Analyse one sequencing read and return its statistics."""
+def parse_fastq(filename):
+    """Read sequencing reads from a FASTQ file."""
+    with open(filename, "r", encoding="utf-8") as file:
+        lines = [line.rstrip("\r\n") for line in file]
 
+    if len(lines) % 4 != 0:
+        raise ValueError(
+            "FASTQ file must contain four lines per read."
+        )
+
+    reads = []
+
+    for index in range(0, len(lines), 4):
+        header = lines[index]
+        sequence = lines[index + 1].strip()
+        separator = lines[index + 2]
+        quality = lines[index + 3]
+
+        if not header.startswith("@"):
+            raise ValueError(
+                "A FASTQ header must begin with @."
+            )
+
+        if not separator.startswith("+"):
+            raise ValueError(
+                "The third FASTQ line must begin with +."
+            )
+
+        if len(sequence) != len(quality):
+            raise ValueError(
+                "Sequence and quality lengths differ for "
+                + header
+            )
+
+        read_id = header[1:].split()[0]
+
+        reads.append((read_id, sequence, quality))
+
+    if not reads:
+        raise ValueError("No sequencing reads found.")
+
+    return reads
+
+
+def analyze_read(read_id, sequence, quality_string):
+    """Analyse one read and return its statistics."""
     sequence = clean_sequence(sequence)
     invalid_bases = validate_sequence(sequence)
 
     result = {
         "read_id": read_id,
         "sequence": sequence,
-        "valid": not invalid_bases and bool(sequence),
-        "invalid_bases": invalid_bases,
         "length": len(sequence),
         "base_counts": count_bases(sequence),
         "gc_content": calculate_gc_content(sequence),
         "average_quality": None,
-        "qc_status": "Not assessed"
+        "valid": False,
+        "qc_status": "FAIL",
+        "warnings": []
     }
 
     if not sequence:
-        result["error"] = "The sequence is empty."
-        result["qc_status"] = "FAIL"
+        result["warnings"].append("Empty sequence")
         return result
 
     if invalid_bases:
-        result["error"] = (
-            "Invalid characters found: "
-            + ", ".join(invalid_bases)
+        result["warnings"].append(
+            "Invalid characters: " + ", ".join(invalid_bases)
         )
-        result["qc_status"] = "FAIL"
         return result
 
-    if quality_string is not None:
-        if len(quality_string) != len(sequence):
-            result["error"] = (
-                "Quality-string length does not match "
-                "sequence length."
-            )
-            result["qc_status"] = "FAIL"
-            return result
+    if len(quality_string) != len(sequence):
+        result["warnings"].append(
+            "Sequence and quality lengths differ"
+        )
+        return result
 
-        quality_scores = [
-            phred_score_to_quality(character)
-            for character in quality_string
-        ]
+    quality_scores = [
+        phred_score_to_quality(character)
+        for character in quality_string
+    ]
 
-        if any(score < 0 or score > 93
-               for score in quality_scores):
-            result["error"] = (
-                "Quality string contains invalid "
-                "Phred+33 scores."
-            )
-            result["qc_status"] = "FAIL"
-            return result
+    if any(score < 0 or score > 93 for score in quality_scores):
+        result["warnings"].append(
+            "Invalid Phred+33 quality score"
+        )
+        return result
 
-        result["average_quality"] = mean(quality_scores)
-
-    warnings = []
+    result["valid"] = True
+    result["average_quality"] = mean(quality_scores)
 
     if result["length"] < MIN_READ_LENGTH:
-        warnings.append("Short read")
+        result["warnings"].append("Short read")
 
     if not (
         MIN_GC_CONTENT
         <= result["gc_content"]
         <= MAX_GC_CONTENT
     ):
-        warnings.append("Review GC content")
+        result["warnings"].append("Review GC content")
 
-    if result["average_quality"] is not None:
-        if result["average_quality"] < MIN_AVERAGE_QUALITY:
-            warnings.append("Low average quality")
+    if result["average_quality"] < MIN_AVERAGE_QUALITY:
+        result["warnings"].append("Low average quality")
 
-    if warnings:
-        result["qc_status"] = "REVIEW: " + "; ".join(warnings)
+    if result["warnings"]:
+        result["qc_status"] = "REVIEW"
     else:
         result["qc_status"] = "PASS"
 
@@ -137,23 +166,11 @@ def analyze_read(read_id, sequence, quality_string=None):
 
 
 def print_read_report(result):
-    """Display the results for one read."""
-
-    print("\n" + "=" * 45)
-    print("NGS READ ANALYSIS")
-    print("=" * 45)
-
-    print("Read ID:", result["read_id"])
+    """Print the analysis report for one read."""
+    print("\n" + "=" * 40)
+    print("READ ID:", result["read_id"])
     print("Sequence:", result["sequence"])
-    print("Status:", "Valid" if result["valid"] else "Invalid")
-
-    if result["invalid_bases"]:
-        print("Invalid characters:", result["invalid_bases"])
-
-    if "error" in result:
-        print("Error:", result["error"])
-
-    print("Read length:", result["length"])
+    print("Length:", result["length"])
 
     for base, count in result["base_counts"].items():
         print(base + " count:", count)
@@ -168,100 +185,52 @@ def print_read_report(result):
     else:
         print("Average Phred quality: Not available")
 
+    print("Valid sequence:", result["valid"])
     print("QC status:", result["qc_status"])
-    print("=" * 45)
 
+    if result["warnings"]:
+        print("Warnings:", "; ".join(result["warnings"]))
 
-def parse_fastq(fastq_text):
-    """
-    Parse standard four-line FASTQ records.
-    Returns a list of (read_id, sequence, quality) tuples.
-    """
-
-    lines = [
-        line.strip()
-        for line in fastq_text.strip().splitlines()
-        if line.strip()
-    ]
-
-    if len(lines) % 4 != 0:
-        raise ValueError(
-            "FASTQ data must contain four lines per read."
-        )
-
-    reads = []
-
-    for index in range(0, len(lines), 4):
-        header = lines[index]
-        sequence = lines[index + 1]
-        separator = lines[index + 2]
-        quality = lines[index + 3]
-
-        if not header.startswith("@"):
-            raise ValueError(
-                "FASTQ read headers must begin with @."
-            )
-
-        if not separator.startswith("+"):
-            raise ValueError(
-                "The third FASTQ line must begin with +."
-            )
-
-        if len(sequence) != len(quality):
-            raise ValueError(
-                "Sequence and quality lengths do not match "
-                "for " + header
-            )
-
-        read_id = header[1:].split()[0]
-
-        reads.append((read_id, sequence, quality))
-
-    return reads
+    print("=" * 40)
 
 
 def print_summary(results):
-    """Summarise all analysed reads."""
-
-    print("\n" + "=" * 45)
-    print("OVERALL QUALITY CONTROL SUMMARY")
-    print("=" * 45)
-
-    total = len(results)
-    valid_results = [r for r in results if r["valid"]]
-    invalid_results = [r for r in results if not r["valid"]]
+    """Summarise the results for all reads."""
+    valid_reads = [r for r in results if r["valid"]]
+    invalid_reads = [r for r in results if not r["valid"]]
 
     passing = [
-        r for r in valid_results
-        if r["qc_status"] == "PASS"
+        r for r in valid_reads if r["qc_status"] == "PASS"
     ]
 
-    requiring_review = [
-        r for r in valid_results
-        if r["qc_status"].startswith("REVIEW")
+    review = [
+        r for r in valid_reads if r["qc_status"] == "REVIEW"
     ]
 
-    print("Total reads:", total)
-    print("Valid reads:", len(valid_results))
-    print("Invalid reads:", len(invalid_results))
+    print("\n" + "=" * 40)
+    print("OVERALL QC SUMMARY")
+    print("=" * 40)
+    print("Total reads:", len(results))
+    print("Valid reads:", len(valid_reads))
+    print("Invalid reads:", len(invalid_reads))
     print("Reads passing QC:", len(passing))
-    print("Reads requiring review:", len(requiring_review))
+    print("Reads requiring review:", len(review))
 
-    if valid_results:
+    if valid_reads:
         print(
             "Average read length:",
-            round(mean(r["length"] for r in valid_results), 2)
+            round(mean(r["length"] for r in valid_reads), 2)
         )
 
         print(
             "Average GC content:",
-            round(mean(r["gc_content"] for r in valid_results), 2),
+            round(mean(r["gc_content"] for r in valid_reads), 2),
             "%"
         )
 
         quality_values = [
             r["average_quality"]
-            for r in valid_results
+            for r in valid_reads
             if r["average_quality"] is not None
         ]
 
@@ -270,61 +239,27 @@ def print_summary(results):
                 "Average Phred quality:",
                 round(mean(quality_values), 2)
             )
-        else:
-            print("Average Phred quality: Not available")
 
-    print("\nNote:")
-    print("QC thresholds are illustrative, not universal.")
-    print("This program is a learning tool, not a replacement")
-    print("for professional tools such as FastQC.")
-    print("=" * 45)
+    print("\nQC thresholds are illustrative, not universal.")
+    print("=" * 40)
 
 
-def analyze_single_read():
-    """Ask the user to analyse one read."""
+def main():
+    """Run the NGS analysis program."""
+    print("\nNGS DATA ANALYSIS")
+    print("Author:", AUTHOR)
 
-    print("\nEnter a DNA sequencing read.")
-    sequence = input("DNA sequence: ")
+    filename = input(
+        "Enter FASTQ filename (default: sample_reads.fastq): "
+    ).strip()
 
-    quality = input(
-        "FASTQ quality string (press Enter to skip): "
-    )
-
-    sequence = clean_sequence(sequence)
-
-    if quality == "":
-        result = analyze_read("User_read", sequence)
-    else:
-        result = analyze_read("User_read", sequence, quality)
-
-    print_read_report(result)
-
-
-def analyze_multiple_reads():
-    """Analyse several illustrative FASTQ reads."""
-
-    example_fastq = """@Read1
-ATGCGCTA
-+
-IIIIIIII
-@Read2
-GGCC
-+
-IIII
-@Read3
-ATATATAT
-+
-55555555
-@Read4
-ATBXGCTA
-+
-IIIIIIII
-"""
+    if not filename:
+        filename = "sample_reads.fastq"
 
     try:
-        reads = parse_fastq(example_fastq)
-    except ValueError as error:
-        print("FASTQ parsing error:", error)
+        reads = parse_fastq(filename)
+    except (OSError, ValueError) as error:
+        print("Could not analyse FASTQ file:", error)
         return
 
     results = []
@@ -335,35 +270,6 @@ IIIIIIII
         print_read_report(result)
 
     print_summary(results)
-
-
-def main():
-    """Display the main menu."""
-
-    while True:
-        print("\n" + "=" * 45)
-        print("NGS DATA ANALYSIS")
-        print("Author:", AUTHOR)
-        print("=" * 45)
-
-        print("1. Analyse a single sequencing read")
-        print("2. Analyse multiple example FASTQ reads")
-        print("3. Exit")
-
-        choice = input("Choose an option (1-3): ").strip()
-
-        if choice == "1":
-            analyze_single_read()
-
-        elif choice == "2":
-            analyze_multiple_reads()
-
-        elif choice == "3":
-            print("Thank you for using NGS Data Analysis!")
-            break
-
-        else:
-            print("Invalid choice. Please enter 1, 2, or 3.")
 
 
 if __name__ == "__main__":
